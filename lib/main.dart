@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'mouse_controller.dart';
 import 'keyboard_controller.dart';
+import 'analysis_page.dart';  // 添加这行
 
 void main() {
   runApp(const MyApp());
@@ -82,6 +83,13 @@ class _MyHomePageState extends State<MyHomePage> {
     _keyboardController.pressKeyCombination([VK.ALT, VK.F4]);
   }
 
+  void _openAnalysisPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const AnalysisPage()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -96,6 +104,24 @@ class _MyHomePageState extends State<MyHomePage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
+                // 在最顶部添加 AI 分析按钮
+                ElevatedButton.icon(
+                  onPressed: _openAnalysisPage,
+                  icon: const Icon(Icons.psychology),
+                  label: const Text('打开 Claude AI 分析助手'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 16,
+                    ),
+                    backgroundColor: Colors.purple,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+                
+                const SizedBox(height: 40),
+                const Divider(),
+                
                 // 鼠标控制部分
                 const Text(
                   '鼠标控制',
