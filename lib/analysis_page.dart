@@ -43,7 +43,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
     // 滚动到底部
     _scrollToBottom();
 
-    // 调用 Claude API
+    // 调用 Dify API
     final response = await _analysisModule.sendMessage(message);
 
     // 添加 AI 回复
@@ -75,6 +75,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
   void _clearChat() {
     setState(() {
       _messages.clear();
+      _analysisModule.clearConversation(); // 清除会话上下文
     });
   }
 
@@ -82,7 +83,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Claude AI 分析助手'),
+        title: const Text('Dify AI 分析助手'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
@@ -108,7 +109,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          '开始与 Claude 对话',
+                          '开始与 Dify AI 对话',
                           style: TextStyle(
                             fontSize: 18,
                             color: Colors.grey[600],
@@ -144,7 +145,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Text('Claude 正在思考...'),
+                  const Text('Dify AI 正在思考...'),
                 ],
               ),
             ),
