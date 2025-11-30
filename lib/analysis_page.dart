@@ -15,6 +15,8 @@ class _AnalysisPageState extends State<AnalysisPage> {
   
   final List<ChatMessage> _messages = [];
   bool _isLoading = false;
+  bool _enableWebSearch = false; // 新增：联网搜索开关
+  String _statusText = ''; // 新增：状态文本
 
   @override
   void dispose() {
@@ -35,28 +37,48 @@ class _AnalysisPageState extends State<AnalysisPage> {
         timestamp: DateTime.now(),
       ));
       _isLoading = true;
+      _statusText = _enableWebSearch ? '正在搜索相关信息...' : 'Claude 正在思考...';
     });
 
-    // 清空输入框
     _inputController.clear();
-
-    // 滚动到底部
     _scrollToBottom();
 
-    // 调用 Claude API
-    final response = await _analysisModule.sendMessage(message);
+    try {
+      String response;
+      
+      // 根据开关选择是否联网搜索
+      if (_enableWebSearch) {
+        setState(() {
+          _statusText = '正在搜索相关信息...';
+        });
+        response = await _analysisModule.sendMessageWithSearch(message);
+      } else {
+        response = await _analysisModule.sendMessage(message);
+      }
 
-    // 添加 AI 回复
-    setState(() {
-      _messages.add(ChatMessage(
-        text: response,
-        isUser: false,
-        timestamp: DateTime.now(),
-      ));
-      _isLoading = false;
-    });
+      // 添加 AI 回复
+      setState(() {
+        _messages.add(ChatMessage(
+          text: response,
+          isUser: false,
+          timestamp: DateTime.now(),
+          hasWebSearch: _enableWebSearch, // 标记是否使用了联网搜索
+        ));
+        _isLoading = false;
+        _statusText = '';
+      });
+    } catch (e) {
+      setState(() {
+        _messages.add(ChatMessage(
+          text: '发生错误: $e',
+          isUser: false,
+          timestamp: DateTime.now(),
+        ));
+        _isLoading = false;
+        _statusText = '';
+      });
+    }
 
-    // 滚动到底部
     _scrollToBottom();
   }
 
@@ -85,6 +107,25 @@ class _AnalysisPageState extends State<AnalysisPage> {
         title: const Text('Claude AI 分析助手'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
+          // 联网搜索开关
+          Row(
+            children: [
+              Icon(
+                Icons.language,
+                size: 20,
+                color: _enableWebSearch ? Colors.green : Colors.grey,
+              ),
+              Switch(
+                value: _enableWebSearch,
+                onChanged: (value) {
+                  setState(() {
+                    _enableWebSearch = value;
+                  });
+                },
+                activeColor: Colors.green,
+              ),
+            ],
+          ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
             onPressed: _clearChat,
@@ -94,6 +135,36 @@ class _AnalysisPageState extends State<AnalysisPage> {
       ),
       body: Column(
         children: [
+          // 联网状态提示条
+          if (_enableWebSearch)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+              color: Colors.green[50],
+              child: Row(
+                children: [
+                  Icon(Icons.language, size: 16, color: Colors.green[700]),
+                  const SizedBox(width: 8),
+                  Text(
+                    '联网搜索已启用',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.green[700],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '回答将基于实时网络信息',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.green[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
           // 消息列表
           Expanded(
             child: _messages.isEmpty
@@ -112,6 +183,14 @@ class _AnalysisPageState extends State<AnalysisPage> {
                           style: TextStyle(
                             fontSize: 18,
                             color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '提示: 开启联网搜索获取实时信息',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[500],
                           ),
                         ),
                       ],
@@ -144,7 +223,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Text('Claude 正在思考...'),
+                  Text(_statusText),
                 ],
               ),
             ),
@@ -178,6 +257,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
                         horizontal: 20,
                         vertical: 12,
                       ),
+                      // 在输入框中显示联网状态
+                      prefixIcon: _enableWebSearch
+                          ? Icon(Icons.language, color: Colors.green[700])
+                          : null,
                     ),
                     onSubmitted: (_) => _sendMessage(),
                   ),
@@ -196,20 +279,22 @@ class _AnalysisPageState extends State<AnalysisPage> {
   }
 }
 
-// 消息数据模型
+// 消息数据模型 - 添加联网标记
 class ChatMessage {
   final String text;
   final bool isUser;
   final DateTime timestamp;
+  final bool hasWebSearch; // 新增：标记是否使用了联网搜索
 
   ChatMessage({
     required this.text,
     required this.isUser,
     required this.timestamp,
+    this.hasWebSearch = false,
   });
 }
 
-// 聊天气泡组件
+// 聊天气泡组件 - 显示联网标记
 class ChatBubble extends StatelessWidget {
   final ChatMessage message;
 
@@ -243,6 +328,29 @@ class ChatBubble extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // 联网搜索标记
+                  if (!message.isUser && message.hasWebSearch)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.language,
+                            size: 14,
+                            color: Colors.green[700],
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '基于网络搜索',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.green[700],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   Text(
                     message.text,
                     style: TextStyle(
