@@ -37,7 +37,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
         timestamp: DateTime.now(),
       ));
       _isLoading = true;
-      _statusText = _enableWebSearch ? '正在搜索相关信息...' : 'Claude 正在思考...';
+      _statusText = _enableWebSearch ? '正在分析问题...' : 'Claude 正在思考...';
     });
 
     _inputController.clear();
@@ -48,10 +48,23 @@ class _AnalysisPageState extends State<AnalysisPage> {
       
       // 根据开关选择是否联网搜索
       if (_enableWebSearch) {
+        // 三步流程的状态提示
         setState(() {
-          _statusText = '正在搜索相关信息...';
+          _statusText = '步骤 1/3: Claude 正在提炼搜索关键词...';
         });
+        
+        await Future.delayed(const Duration(milliseconds: 500)); // 让用户看到状态变化
+        
+        setState(() {
+          _statusText = '步骤 2/3: 正在搜索网络信息...';
+        });
+        
+        // 这里会执行三步流程
         response = await _analysisModule.sendMessageWithSearch(message);
+        
+        setState(() {
+          _statusText = '步骤 3/3: Claude 正在分析搜索结果...';
+        });
       } else {
         response = await _analysisModule.sendMessage(message);
       }
@@ -62,7 +75,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
           text: response,
           isUser: false,
           timestamp: DateTime.now(),
-          hasWebSearch: _enableWebSearch, // 标记是否使用了联网搜索
+          hasWebSearch: _enableWebSearch,
         ));
         _isLoading = false;
         _statusText = '';
