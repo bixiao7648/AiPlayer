@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'analysis_module.dart';
+import 'screenshot_helper.dart';
+import 'dart:io';
 
 class AnalysisPage extends StatefulWidget {
   const AnalysisPage({super.key});
@@ -15,6 +17,8 @@ class _AnalysisPageState extends State<AnalysisPage> {
   
   final List<ChatMessage> _messages = [];
   bool _isLoading = false;
+
+  final ScreenshotHelper _screenshotHelper = ScreenshotHelper();
 
   @override
   void dispose() {
@@ -79,6 +83,64 @@ class _AnalysisPageState extends State<AnalysisPage> {
     });
   }
 
+  Future<void> _takeScreenshot() async {
+    try {
+      // 生成文件名（使用时间戳）
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final fileName = 'screenshot_$timestamp.bmp';
+      
+      // 保存到当前目录或指定目录
+      // 如果要保存到应用目录，可以使用 path_provider 包
+      final filePath = fileName;
+      
+      // 显示加载提示
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('正在截图...')),
+        );
+      }
+
+      // 执行截图
+      final success = await _screenshotHelper.captureFullScreen(filePath);
+      
+      if (mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('截图已保存: $filePath'),
+              duration: const Duration(seconds: 3),
+              action: SnackBarAction(
+                label: '打开文件夹',
+                onPressed: () {
+                  // 可以添加打开文件夹的功能
+                  final file = File(filePath);
+                  final dir = file.parent.path;
+                  Process.run('explorer', [dir]);
+                },
+              ),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('截图失败，请重试'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('截图出错: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -86,6 +148,11 @@ class _AnalysisPageState extends State<AnalysisPage> {
         title: const Text('Dify AI 分析助手'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.screenshot),
+            onPressed: _takeScreenshot,
+            tooltip: '截图',
+          ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
             onPressed: _clearChat,
