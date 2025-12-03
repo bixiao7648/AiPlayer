@@ -36,6 +36,11 @@ dependencies:
   cupertino_icons: ^1.0.8
   ffi: ^2.1.0
   http: ^1.1.0
+  http_parser: ^4.0.2  # 新增：用于处理文件上传的 MIME 类型
+  file_picker: ^8.0.0+1  # 新增：用于选择文件
+  pasteboard: ^0.2.0  # 新增：用于粘贴板操作（Windows 支持）
+  path_provider: ^2.1.0  # 新增：用于临时文件存储
+  image: ^4.1.3  # 新增：用于图片压缩和格式转换
 
 dev_dependencies:
   flutter_test:

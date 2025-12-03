@@ -1,24 +1,151 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+import 'package:image/image.dart' as img; // 引入 image 库
+import 'package:path_provider/path_provider.dart'; // 需要 path_provider
 
 class AnalysisModule {
   // Dify API 配置
   static const String _apiKey = 'app-5LrdPZcsaJYZXfATF05O4A7k';
   static const String _baseUrl = 'https://api.dify.ai/v1';
   
-  // 固定 User ID，确保同一个用户访问同一个会话
-  // 在实际应用中，建议使用登录用户的真实 ID 或设备唯一标识
   static final String _userId = 'flutter-user-fixed-id'; 
 
-  // 只需要一个会话ID即可，不需要分开
   String? _conversationId;
   
-  /// 发送消息到 Dify API
-  /// 
-  /// [message] 用户输入的问题
-  /// 返回 Dify AI 的回答，如果出错则返回错误信息
-  Future<String> sendMessage(String message) async {
-    if (message.trim().isEmpty) {
+  /// 压缩图片并转换为 JPG
+  /// 返回压缩后的临时文件路径
+  Future<String?> compressImage(String sourcePath) async {
+    try {
+      final file = File(sourcePath);
+      if (!await file.exists()) return null;
+
+      // 读取图片
+      final imageBytes = await file.readAsBytes();
+      final image = img.decodeImage(imageBytes); // 自动识别 BMP, PNG, JPG 等
+      
+      if (image == null) return null;
+      
+      // 调整大小：如果宽度超过 1024，则等比缩小（Dify/Claude 对超大图处理较慢且费 Token）
+      img.Image resized = image;
+      if (image.width > 1024) {
+        resized = img.copyResize(image, width: 1024);
+      }
+      
+      // 转换为 JPG 格式，质量 80
+      final jpgBytes = img.encodeJpg(resized, quality: 80);
+      
+      // 保存到临时文件
+      final tempDir = await getTemporaryDirectory();
+      final tempPath = '${tempDir.path}/upload_temp_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final tempFile = File(tempPath);
+      await tempFile.writeAsBytes(jpgBytes);
+      
+      print('图片压缩完成: ${(file.lengthSync()/1024).toStringAsFixed(1)}KB -> ${(tempFile.lengthSync()/1024).toStringAsFixed(1)}KB');
+      
+      return tempPath;
+    } catch (e) {
+      print('图片压缩失败: $e');
+      // 压缩失败则返回原路径（作为降级方案）
+      return sourcePath;
+    }
+  }
+
+  /// 上传文件到 Dify
+  Future<Map<String, dynamic>?> uploadFile(String filePath, String user) async {
+    try {
+      final file = File(filePath);
+      if (!await file.exists()) {
+        print('文件不存在: $filePath');
+        return null;
+      }
+
+      // 检查文件大小（限制 10MB）
+      if (await file.length() > 10 * 1024 * 1024) {
+        print('文件过大，请先压缩');
+        return null;
+      }
+
+      final url = Uri.parse('$_baseUrl/files/upload');
+      var request = http.MultipartRequest('POST', url);
+      request.headers['Authorization'] = 'Bearer $_apiKey';
+      
+      // 自动判断 MIME 类型
+      String mimeType = 'image/jpeg';
+      if (filePath.toLowerCase().endsWith('.png')) {
+        mimeType = 'image/png';
+      } else if (filePath.toLowerCase().endsWith('.gif')) {
+        mimeType = 'image/gif';
+      } else if (filePath.toLowerCase().endsWith('.bmp')) {
+        mimeType = 'image/bmp';
+      } else if (filePath.toLowerCase().endsWith('.webp')) {
+        mimeType = 'image/webp';
+      }
+      
+      final mimeTypeParts = mimeType.split('/');
+
+      // 添加文件
+      request.files.add(await http.MultipartFile.fromPath(
+        'file',
+        filePath,
+        contentType: MediaType(mimeTypeParts[0], mimeTypeParts[1]),
+      ));
+      
+      request.fields['user'] = user;
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        print('文件上传成功: $data');
+        return data;
+      } else {
+        print('文件上传失败: ${response.statusCode} - ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('文件上传错误: $e');
+      return null;
+    }
+  }
+
+  /// 发送带图片的消息（包含自动压缩）
+  Future<String> sendMessageWithImage(String message, String imagePath) async {
+    // 1. 先尝试压缩/转换图片
+    String finalPath = imagePath;
+    final compressedPath = await compressImage(imagePath);
+    if (compressedPath != null) {
+      finalPath = compressedPath;
+    }
+
+    // 2. 上传处理后的文件
+    final uploadResult = await uploadFile(finalPath, _userId);
+    
+    if (uploadResult == null) {
+      return '图片上传失败，请重试';
+    }
+    
+    // 3. 构造文件信息
+    final files = [
+      {
+        'type': 'image',
+        'transfer_method': 'local_file',
+        'upload_file_id': uploadResult['id'],
+      }
+    ];
+    
+    // 4. 发送消息
+    return await sendMessage(message, files: files);
+  }
+
+  /// 发送消息基础方法
+  Future<String> sendMessage(
+    String message, {
+    List<Map<String, dynamic>>? files,
+  }) async {
+    if (message.trim().isEmpty && (files == null || files.isEmpty)) {
       return '请输入问题';
     }
 
@@ -29,10 +156,13 @@ class AnalysisModule {
         'inputs': {},
         'query': message,
         'response_mode': 'blocking',
-        'user': _userId, // <--- 修改这里：使用固定的 User ID
+        'user': _userId,
       };
       
-      // 使用同一个会话ID
+      if (files != null && files.isNotEmpty) {
+        requestBody['files'] = files;
+      }
+      
       if (_conversationId != null && _conversationId!.isNotEmpty) {
         requestBody['conversation_id'] = _conversationId!;
       }
@@ -49,43 +179,35 @@ class AnalysisModule {
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         
-        // 更新全局会话ID
         if (data['conversation_id'] != null) {
           _conversationId = data['conversation_id'];
         }
         
-        // 解析返回的消息
         if (data['answer'] != null) {
           return data['answer'];
         } else {
           return '未收到回复';
         }
       } else {
-        // 如果遇到 404 错误（可能是服务端重置了会话），尝试清空 ID 重试
         if (response.statusCode == 404) {
           _conversationId = null;
-           // 可选：这里可以递归调用一次 sendMessage(message) 自动重试
            return '会话已失效，请重试';
         }
         
-        final errorData = jsonDecode(utf8.decode(response.bodyBytes));
-        return '请求失败: ${response.statusCode}\n${errorData['message'] ?? response.body}';
+        // 尝试解析错误信息
+        try {
+           final errorData = jsonDecode(utf8.decode(response.bodyBytes));
+           return '请求失败 (${response.statusCode}): ${errorData['message'] ?? response.body}';
+        } catch (e) {
+           return '请求失败 (${response.statusCode}): ${response.body}';
+        }
       }
     } catch (e) {
       return '发生错误: $e';
     }
   }
 
-  /// 清除会话上下文
   void clearConversation() {
     _conversationId = null;
-  }
-
-  /// 发送消息并流式接收（可选实现）
-  /// 如果 API 支持 streaming，可以实现这个方法
-  Stream<String> sendMessageStream(String message) async* {
-    // 这是一个简单的实现，实际流式传输需要 SSE 支持
-    final result = await sendMessage(message);
-    yield result;
   }
 }
