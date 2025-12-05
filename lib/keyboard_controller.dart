@@ -117,7 +117,7 @@ class KeyboardController {
     // 特殊字符映射
     switch (char) {
       case ' ': return VK.SPACE;
-      case '\n': return VK.RETURN;
+      case '\n': case '\r': return VK.RETURN;
       case '\t': return VK.TAB;
       case '`': case '~': return VK.OEM_3;
       case '-': case '_': return VK.OEM_MINUS;

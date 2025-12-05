@@ -1,0 +1,51 @@
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
+
+class FileSaverService {
+  /// 保存内容到文件
+  /// [content] : 要保存的字符串内容 (JSON 或 普通文本)
+  /// [defaultFileName] : 默认文件名 (例如 "analysis_report.json")
+  /// [extension] : 文件扩展名 (例如 "json" 或 "txt")
+  static Future<bool> saveContent(
+      String content, String defaultFileName, String extension) async {
+    try {
+      String? outputFile;
+
+      if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+        // 桌面端：使用系统原生的 "保存为..." 对话框
+        outputFile = await FilePicker.platform.saveFile(
+          dialogTitle: '请选择保存位置',
+          fileName: defaultFileName,
+          allowedExtensions: [extension],
+          type: FileType.custom,
+        );
+      } else if (Platform.isAndroid || Platform.isIOS) {
+        // 移动端：先让用户选择一个文件夹
+        String? selectedDirectory = await FilePicker.platform.getDirectoryPath(
+          dialogTitle: '请选择保存目录',
+        );
+
+        if (selectedDirectory != null) {
+          // 在移动端，我们通常需要手动拼接路径
+          // 注意：这里简单拼接，实际生产环境可能需要处理重名文件
+          outputFile = p.join(selectedDirectory, defaultFileName);
+        }
+      }
+
+      if (outputFile != null) {
+        final File file = File(outputFile);
+        await file.writeAsString(content);
+        print('文件已成功保存到: $outputFile');
+        return true;
+      } else {
+        print('用户取消了保存操作');
+        return false;
+      }
+    } catch (e) {
+      print('保存文件失败: $e');
+      return false;
+    }
+  }
+}

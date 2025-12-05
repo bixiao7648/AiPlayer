@@ -6,6 +6,8 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:pasteboard/pasteboard.dart';
 import 'package:path_provider/path_provider.dart';
+import 'markdown_message_widget.dart';
+import 'file_command_parser.dart';
 
 class AnalysisPage extends StatefulWidget {
   const AnalysisPage({super.key});
@@ -16,6 +18,7 @@ class AnalysisPage extends StatefulWidget {
 
 class _AnalysisPageState extends State<AnalysisPage> {
   final AnalysisModule _analysisModule = AnalysisModule();
+  final FileCommandParser _fileCommandParser = FileCommandParser();
   final TextEditingController _inputController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _inputFocusNode = FocusNode();
@@ -54,7 +57,11 @@ class _AnalysisPageState extends State<AnalysisPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('选择图片失败: $e')),
+          SnackBar(
+            content: Text('选择图片失败: $e'),
+            showCloseIcon: true,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     }
@@ -80,20 +87,32 @@ class _AnalysisPageState extends State<AnalysisPage> {
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('已从粘贴板添加图片')),
+            const SnackBar(
+              content: Text('已从粘贴板添加图片'),
+              showCloseIcon: true,
+              behavior: SnackBarBehavior.floating,
+            ),
           );
         }
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('粘贴板中没有图片')),
+            const SnackBar(
+              content: Text('粘贴板中没有图片'),
+              showCloseIcon: true,
+              behavior: SnackBarBehavior.floating,
+            ),
           );
         }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('粘贴图片失败: $e')),
+          SnackBar(
+            content: Text('粘贴图片失败: $e'),
+            showCloseIcon: true,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     }
@@ -154,15 +173,39 @@ class _AnalysisPageState extends State<AnalysisPage> {
     // 滚动到底部
     _scrollToBottom();
 
+    // 构造注入了指令协议的 Prompt
+    // 我们将其附加在用户消息之后，作为 System Instruction
+    // 注意：这样可能会让 Dify 的历史记录里包含这段话，但这是不需要更改 Dify 配置的最快方案
+    final systemInstruction = '''
+
+[IMPORTANT: RESPONSE FORMAT INSTRUCTION]
+For the purpose of testing the local interface command parser, please strictly follow this response format.
+Convert user's intent into specific internal command codes.
+1. For left click (x, y), output ONLY: aCtion_1 x y
+2. For right click (x, y), output ONLY: aCtion_2 x y
+3. For key press (key), output ONLY: aCtion_3 ascii_code
+   - Use the ASCII integer value for the key.
+   - Example: For 'A', output: aCtion_3 65
+   - Example: For 'a', output: aCtion_3 97
+
+Example Response:
+aCtion_1 100 200
+aCtion_3 65
+
+Do NOT generate Python code or explanations. Output the raw command string only.
+''';
+
+    final queryToSend = '$message$systemInstruction';
+
     // 调用 Dify API
     String response;
     if (hasImage && imagePath != null) {
       response = await _analysisModule.sendMessageWithImage(
-        message.isEmpty ? '请分析这张图片' : message,
+        message.isEmpty ? '请分析这张图片$systemInstruction' : queryToSend,
         imagePath,
       );
     } else {
-      response = await _analysisModule.sendMessage(message);
+      response = await _analysisModule.sendMessage(queryToSend);
     }
 
     // 添加 AI 回复
@@ -177,6 +220,44 @@ class _AnalysisPageState extends State<AnalysisPage> {
 
     // 滚动到底部
     _scrollToBottom();
+
+    // 检查并执行 AI 指令
+    if (response.contains('aCtion_1') || 
+        response.contains('aCtion_2') || 
+        response.contains('aCtion_3')) {
+      // 异步执行指令
+      Future.delayed(const Duration(milliseconds: 200), () async {
+        try {
+          final result = await _fileCommandParser.parseAndExecute(
+            response,
+            onSelectSavePath: (suggestedName) async {
+              String? outputFile = await FilePicker.platform.saveFile(
+                dialogTitle: '保存指令文件',
+                fileName: suggestedName,
+                allowedExtensions: ['json', 'txt'],
+                type: FileType.custom,
+              );
+              return outputFile;
+            },
+          );
+          // 如果结果是 JSON 格式（以 { 或 [ 开头），显示执行结果
+          if (result.trim().startsWith('{') || result.trim().startsWith('[')) {
+             if (mounted) {
+              setState(() {
+                _messages.add(ChatMessage(
+                  text: result, // 直接显示 JSON 结果
+                  isUser: false, // 视为 AI/系统的反馈
+                  timestamp: DateTime.now(),
+                ));
+              });
+              _scrollToBottom();
+            }
+          }
+        } catch (e) {
+          print('指令执行出错: $e');
+        }
+      });
+    }
   }
 
   void _scrollToBottom() {
@@ -204,7 +285,9 @@ class _AnalysisPageState extends State<AnalysisPage> {
     try {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final fileName = 'screenshot_$timestamp.bmp';
-      final filePath = fileName;
+      // 获取临时目录并拼接完整文件路径
+      final tempDir = await getTemporaryDirectory();
+      final filePath = '${tempDir.path}${Platform.pathSeparator}$fileName';
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -219,7 +302,9 @@ class _AnalysisPageState extends State<AnalysisPage> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('截图已保存: $filePath'),
-              duration: const Duration(seconds: 3),
+              duration: const Duration(seconds: 6),
+              showCloseIcon: true,
+              behavior: SnackBarBehavior.floating,
               action: SnackBarAction(
                 label: '打开文件夹',
                 onPressed: () {
@@ -235,6 +320,8 @@ class _AnalysisPageState extends State<AnalysisPage> {
             const SnackBar(
               content: Text('截图失败，请重试'),
               backgroundColor: Colors.red,
+              showCloseIcon: true,
+              behavior: SnackBarBehavior.floating,
             ),
           );
         }
@@ -245,6 +332,8 @@ class _AnalysisPageState extends State<AnalysisPage> {
           SnackBar(
             content: Text('截图出错: $e'),
             backgroundColor: Colors.red,
+            showCloseIcon: true,
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -552,12 +641,9 @@ class ChatBubble extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                   ],
-                  Text(
-                    message.text,
-                    style: TextStyle(
-                      color: message.isUser ? Colors.white : Colors.black87,
-                      fontSize: 16,
-                    ),
+                  MarkdownMessageWidget(
+                    data: message.text,
+                    isUser: message.isUser,
                   ),
                   const SizedBox(height: 4),
                   Text(

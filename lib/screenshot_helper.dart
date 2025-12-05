@@ -32,6 +32,10 @@ class ScreenshotHelper {
       Int32 Function(IntPtr hWnd, IntPtr hDC),
       int Function(int hWnd, int hDC)>('ReleaseDC');
 
+  late final Function _getWindowRect = _user32.lookupFunction<
+      Int32 Function(IntPtr hWnd, Pointer<Int32> lpRect),
+      int Function(int hWnd, Pointer<Int32> lpRect)>('GetWindowRect');
+
   // gdi32.dll 函数
   late final Function _createCompatibleDC = _gdi32.lookupFunction<
       IntPtr Function(IntPtr hdc),
@@ -232,10 +236,48 @@ class ScreenshotHelper {
 
   /// 截取指定窗口的截图（高级功能）
   /// 可以根据窗口句柄截取特定窗口
+  /// [hWnd] 窗口句柄
+  /// [filePath] 保存的文件路径
+  /// 返回是否成功
   Future<bool> captureWindow(int hWnd, String filePath) async {
-    // 这里可以扩展实现窗口截图功能
-    // 需要使用 GetWindowRect 获取窗口大小和位置
-    // 本例中暂时不实现，可以后续扩展
-    throw UnimplementedError('窗口截图功能暂未实现');
+    try {
+      // 使用 GetWindowRect 获取窗口大小和位置
+      // RECT 结构体包含 left, top, right, bottom 四个 int32 值（共16字节）
+      final pRect = calloc<Int32>(4);
+      
+      try {
+        // 调用 GetWindowRect 获取窗口矩形
+        final result = _getWindowRect(hWnd, pRect);
+        
+        if (result == 0) {
+          throw Exception('GetWindowRect 失败，窗口句柄可能无效');
+        }
+        
+        // 读取 RECT 结构体的值
+        final left = pRect[0];
+        final top = pRect[1];
+        final right = pRect[2];
+        final bottom = pRect[3];
+        
+        // 计算窗口宽度和高度
+        final width = right - left;
+        final height = bottom - top;
+        
+        if (width <= 0 || height <= 0) {
+          throw Exception('窗口尺寸无效: ${width}x${height}');
+        }
+        
+        print('窗口位置: ($left, $top), 尺寸: ${width}x${height}');
+        
+        // 使用 captureScreen 方法截取窗口区域
+        return await captureScreen(left, top, width, height, filePath);
+      } finally {
+        // 释放内存
+        calloc.free(pRect);
+      }
+    } catch (e) {
+      print('窗口截图失败: $e');
+      return false;
+    }
   }
 }
