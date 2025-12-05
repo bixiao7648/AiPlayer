@@ -4,11 +4,12 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:image/image.dart' as img; // 引入 image 库
 import 'package:path_provider/path_provider.dart'; // 需要 path_provider
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class AnalysisModule {
-  // Dify API 配置
-  static const String _apiKey = 'app-5LrdPZcsaJYZXfATF05O4A7k';
-  static const String _baseUrl = 'https://api.dify.ai/v1';
+  // 从环境变量读取 API 配置
+  static String get _apiKey => dotenv.env['DIFY_API_KEY'] ?? '';
+  static String get _baseUrl => dotenv.env['DIFY_BASE_URL'] ?? 'https://api.dify.ai/v1';
   
   static final String _userId = 'flutter-user-fixed-id'; 
 

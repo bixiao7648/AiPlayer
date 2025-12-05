@@ -63,6 +63,70 @@ class KeyboardController {
     }
   }
 
+  /// 创建新文件（Ctrl+N）
+  void createNewFile({int delayMs = 100}) {
+    pressKeyCombination([VK.CONTROL, VK.N], holdMs: delayMs);
+  }
+
+  /// 多次追加文本（可以连续多次输入不同文本）
+  void appendTextMultiple(List<String> texts, {int delayBetweenKeys = 50, int delayBetweenTexts = 200}) {
+    for (int i = 0; i < texts.length; i++) {
+      typeText(texts[i], delayBetweenKeys: delayBetweenKeys);
+      if (i < texts.length - 1) {
+        sleep(Duration(milliseconds: delayBetweenTexts));
+      }
+    }
+  }
+
+  /// 删除文本（Backspace - 删除光标前的字符）
+  void deleteText({int count = 1, int delayMs = 50}) {
+    for (int i = 0; i < count; i++) {
+      pressKey(VK.BACK, delayMs: delayMs);
+      if (i < count - 1) {
+        sleep(Duration(milliseconds: delayMs));
+      }
+    }
+  }
+
+  /// 删除文本（Delete - 删除光标后的字符）
+  void deleteTextForward({int count = 1, int delayMs = 50}) {
+    for (int i = 0; i < count; i++) {
+      pressKey(VK.DELETE, delayMs: delayMs);
+      if (i < count - 1) {
+        sleep(Duration(milliseconds: delayMs));
+      }
+    }
+  }
+
+  /// 删除整行（Ctrl+Shift+K 或 Ctrl+L）
+  void deleteLine({int delayMs = 100}) {
+    // 使用 Ctrl+Shift+K 删除行（VS Code/很多编辑器支持）
+    pressKeyCombination([VK.CONTROL, VK.SHIFT, VK.K], holdMs: delayMs);
+  }
+
+  /// 删除到行尾（Ctrl+Delete 或 Shift+End + Delete）
+  void deleteToLineEnd({int delayMs = 100}) {
+    // 先选中到行尾，再删除
+    pressKeyCombination([VK.SHIFT, VK.END], holdMs: delayMs);
+    sleep(Duration(milliseconds: 50));
+    pressKey(VK.DELETE, delayMs: delayMs);
+  }
+
+  /// 删除到行首（Shift+Home + Delete）
+  void deleteToLineStart({int delayMs = 100}) {
+    // 先选中到行首，再删除
+    pressKeyCombination([VK.SHIFT, VK.HOME], holdMs: delayMs);
+    sleep(Duration(milliseconds: 50));
+    pressKey(VK.DELETE, delayMs: delayMs);
+  }
+
+  /// 清空所有文本（全选 + 删除）
+  void clearAllText({int delayMs = 100}) {
+    pressKeyCombination([VK.CONTROL, VK.A], holdMs: delayMs);
+    sleep(Duration(milliseconds: 50));
+    pressKey(VK.DELETE, delayMs: delayMs);
+  }
+
   /// 同时按下多个键（组合键）
   /// 例如: pressKeyCombination([VK.CONTROL, VK.A]) 实现 Ctrl+A
   void pressKeyCombination(List<int> keys, {int holdMs = 100}) {
