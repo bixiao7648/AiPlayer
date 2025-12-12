@@ -204,7 +204,9 @@ class _AnalysisPageState extends State<AnalysisPage> {
     try {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final fileName = 'screenshot_$timestamp.bmp';
-      final filePath = fileName;
+      // 获取临时目录并拼接完整文件路径
+      final tempDir = await getTemporaryDirectory();
+      final filePath = '${tempDir.path}${Platform.pathSeparator}$fileName';
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
